@@ -40,7 +40,7 @@ private object AppDependencies {
       "com.github.tomakehurst" % "wiremock" % "1.56" % scope,
       "org.scalatestplus" %% "play" % "1.2.0" % scope,
       "uk.gov.hmrc" %% "reactivemongo-test" % "1.6.0" % scope,
-      "org.seleniumhq.selenium" % "selenium-chrome-driver" % "2.52.0"
+      "org.seleniumhq.selenium" % "selenium-java" % "2.52.0"
     )
   }
 

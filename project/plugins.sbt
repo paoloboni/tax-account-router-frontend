@@ -12,3 +12,5 @@ addSbtPlugin("uk.gov.hmrc" % "sbt-distributables" % "0.10.0")
 addSbtPlugin("com.typesafe.play" % "sbt-plugin" % "2.3.10")
 
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.3.3")
+
+addSbtPlugin("net.virtual-void" % "sbt-dependency-graph" % "0.8.2")

@@ -37,9 +37,12 @@ trait NavigationSugar extends WebBrowser with Eventually with Assertions with Sh
   }
 
   def on(page: WebPage)(implicit webDriver: WebDriver) = {
-    eventually {
-      webDriver.findElement(By.tagName("body"))
-      page.assertPageLoaded()
+    setCaptureDir("target/screenshots")
+    withScreenshot {
+      eventually {
+        webDriver.findElement(By.tagName("body"))
+        page.assertPageLoaded()
+      }
     }
   }
 

@@ -20,7 +20,7 @@ import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration._
 import org.openqa.selenium.chrome.ChromeDriver
 import org.openqa.selenium.firefox.{FirefoxDriver, FirefoxProfile}
-import org.openqa.selenium.remote.DesiredCapabilities
+import org.openqa.selenium.remote.{CapabilityType, DesiredCapabilities}
 
 object Env {
 
@@ -39,6 +39,24 @@ object Env {
 
   def createBrowser() = {
     val capabilities = DesiredCapabilities.chrome()
+    val proxy = new org.openqa.selenium.Proxy()
+    for {
+      httpProxyHost <- Option(System.getProperty("http.proxyHost"))
+      httpProxyPort <- Option(System.getProperty("http.proxyPort"))
+    } yield proxy.setHttpProxy(s"$httpProxyHost:$httpProxyPort")
+    for {
+      httpProxyHost <- Option(System.getProperty("https.proxyHost"))
+      httpProxyPort <- Option(System.getProperty("https.proxyPort"))
+    } yield proxy.setSslProxy(s"$httpProxyHost:$httpProxyPort")
+    Option(System.getProperty("http.nonProxyHosts")).foreach { noProxyHosts =>
+      noProxyHosts.split("|").foreach(proxy.setNoProxy)
+    }
+    Option(System.getProperty("https.nonProxyHosts")).foreach { noProxyHosts =>
+      noProxyHosts.split("|").foreach(proxy.setNoProxy)
+    }
+    proxy.setNoProxy("*localhost*")
+    proxy.setNoProxy("*127.0.0.1*")
+    capabilities.setCapability(CapabilityType.PROXY, proxy)
     new ChromeDriver(capabilities)
   }
 

@@ -26,8 +26,10 @@ import scala.concurrent.Future
 
 case class RuleContext(credId: Option[String])(implicit request: Request[AnyContent], hc: HeaderCarrier) {
 
-  implicit val request_ = request
-  implicit val hc_ = hc
+  import play.api.Play.current
+
+  val request_ = request
+  val hc_ = hc
 
   val logger: LoggerLike = Logger
 

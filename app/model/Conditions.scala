@@ -19,7 +19,7 @@ package model
 import connector.AffinityGroupValue
 import engine._
 import model.RoutingReason._
-import uk.gov.hmrc.play.http.logging.MdcLoggingExecutionContext.fromLoggingDetails
+import scala.concurrent.ExecutionContext.Implicits.global
 
 import scala.concurrent.Future
 

@@ -26,11 +26,12 @@ import scala.concurrent.Future
 
 trait RuleEngine {
 
-  val rules: List[Rule]
+  val rules: List[Rule[RuleContext]]
 
   val defaultLocation: Location
 
-  def matchRulesForLocation(ruleContext: RuleContext, auditContext: TAuditContext)(implicit request: Request[AnyContent], hc: HeaderCarrier): Future[Location] = {
+  def matchRulesForLocation(ruleContext: RuleContext): Future[Location] = {
+
     rules.foldLeft(Future[Option[Location]](None)) {
       (location, rule) => location.flatMap(candidateLocation => if (candidateLocation.isDefined) location
       else {

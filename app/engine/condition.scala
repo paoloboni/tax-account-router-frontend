@@ -16,23 +16,24 @@
 
 package engine
 
-import cats.Semigroup
 import cats.data.Writer
 import model.Location
 import model.RoutingReason.RoutingReason
-//import uk.gov.hmrc.play.http.logging.MdcLoggingExecutionContext.fromLoggingDetails
+import scala.concurrent.ExecutionContext.Implicits.global
 
 import scala.concurrent.Future
 
 sealed trait Expr[Context, Result] {
-  def evaluate(context: Context): Writer[AuditInfo, Result]
+  def evaluate(context: Context): Future[Writer[AuditInfo, Result]]
 }
 
-sealed trait Condition[C] extends Expr[C, Boolean] {
+case class Pure[C](f: C => Future[Boolean], routingReason: RoutingReason) extends Condition[C] with Reason
+case class And[C](c1: Condition[C], c2: Condition[C]) extends Condition[C]
+case class Or[C](c1: Condition[C], c2: Condition[C]) extends Condition[C]
+case class Not[C](condition: Condition[C]) extends Condition[C]
+case class When[C](condition: Condition[C])
 
-  implicit val mergeAuditInfo: Semigroup[AuditInfo] = new Semigroup[AuditInfo] {
-    override def combine(x: AuditInfo, y: AuditInfo): AuditInfo = AuditInfo(x.routingReasons ++ y.routingReasons)
-  }
+sealed trait Condition[C] extends Expr[C, Boolean] {
 
   def evaluate(context: C): ConditionResult = this match {
 
@@ -66,56 +67,62 @@ sealed trait Condition[C] extends Expr[C, Boolean] {
         c1 <- c
       } yield !c1
   }
+}
 
-  import scala.languageFeature.implicitConversions
-
-  implicit val toConditionOps: ConditionOps = ConditionOps(this)
-
-  case class ConditionOps(condition: Condition[C]) {
+object ConditionT {
+  implicit class ConditionOps[C](condition: Condition[C]) {
     def and(other: Condition[C]) = And(condition, other)
     def or(other: Condition[C]) = Or(condition, other)
   }
 
+  def not[C](condition: Condition[C]) = Not(condition)
 }
 
-sealed trait RoutingReasonT { self: Condition[_] =>
-  def auditType: Option[RoutingReasonT]
+sealed trait Reason { self: Condition[_] =>
+  def routingReason: RoutingReason
 }
 
-case class Pure[C](f: C => Future[Boolean], auditType: RoutingReason) extends Condition[C] with RoutingReasonT
-case class And[C](c1: Condition[C], c2: Condition[C]) extends Condition[C]
-case class Or[C](c1: Condition[C], c2: Condition[C]) extends Condition[C]
-case class Not[C](condition: Condition[C]) extends Condition[C]
+sealed trait Rule[C] extends Expr[C, Option[Location]] {
 
-sealed trait RuleT[C] extends Expr[C, Option[Location]] {
-  def evaluate(context: C): RuleResult = this match {
-    case Rule(condition, location) =>
-      for {
-        c <- condition.evaluate(context)
-      } yield c.mapBoth { case (auditInfo, result) =>
-        val l = Option(result).collect { case true => location }
-        (auditInfo, l)
-      }
-  }
+  def evaluate(context: C): RuleResult = {
 
-  def withName(name: String): RuleT[C] = this match {
-    case Rule(condition, location) => RuleWithName(condition, location, name)
-    case r@RuleWithName(_, _, _) => r
+    def go(condition: Condition[C], location: Location, name: Option[String] = None): RuleResult = for {
+      c <- condition.evaluate(context)
+    } yield c.mapBoth { case (auditInfo, result) =>
+      val l = Option(result).collect { case true => location }
+      val info = name.fold(auditInfo)(n => auditInfo.copy(ruleApplied = Some(n)))
+      (info, l)
+    }
+
+    this match {
+      case BaseRule(condition, location) => go(condition, location)
+      case RuleWithName(condition, location, name) => go(condition, location, Option(name))
+    }
   }
 }
 
-case class When[C](condition: Condition[C]) {
-  def thenReturn(location: Location): RuleT[C] = Rule(condition, location)
+object WhenT {
+  implicit class WhenOps[C](when: When[C]) {
+    def thenReturn(location: Location): Rule[C] = when match {
+      case When(condition) => BaseRule(condition, location)
+    }
+  }
 }
 
-case class Rule[C](condition: Condition[C], location: Location) extends RuleT[C]
-case class RuleWithName[C](condition: Condition[C], location: Location, name: String) extends RuleT[C] with Name
+object RuleT {
+  implicit class RuleOps[C](rule: Rule[C]) {
+    def withName(name: String): Rule[C] = rule match {
+      case BaseRule(condition, location) => RuleWithName(condition, location, name)
+      case r@RuleWithName(_, _, _) => r.copy(name = name)
+    }
+  }
 
-sealed trait Name { self: RuleT[_] =>
+  def when[C](condition: Condition[C]) = When(condition)
+}
+
+private case class BaseRule[C](condition: Condition[C], location: Location) extends Rule[C]
+private case class RuleWithName[C](condition: Condition[C], location: Location, name: String) extends Rule[C] with Name
+
+sealed trait Name { self: Rule[_] =>
   def name: String
-}
-
-object Test extends App {
-  import model.Conditions._
-  assert(When(And(ggEnrolmentsAvailable, Not(loggedInViaVerify))) == When(ggEnrolmentsAvailable and Not(loggedInViaVerify)))
 }

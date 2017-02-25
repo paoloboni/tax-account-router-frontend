@@ -48,8 +48,8 @@ object TarRules extends RuleEngine {
 
     when(not(hasAnyInactiveEnrolment) and not(affinityGroupAvailable)) thenReturn BusinessTaxAccount withName "bta-home-page-affinity-group-unavailable",
 
-    when(not(hasAnyInactiveEnrolment) and hasIndividualAffinityGroup) thenReturn PersonalTaxAccount withName "pta-home-page-individual",
+    when(not(hasAnyInactiveEnrolment) and hasIndividualAffinityGroup) thenReturn PersonalTaxAccount withName "pta-home-page-individual"
 
-    when(anyOtherRuleApplied) thenReturn BusinessTaxAccount withName "bta-home-page-passed-through"
+//    when(anyOtherRuleApplied) thenReturn BusinessTaxAccount withName "bta-home-page-passed-through"
   )
 }

@@ -70,8 +70,8 @@ trait RouterController extends FrontendController with Actions {
   }
 
   private def getFinalDestination(ruleContext: RuleContext, auditContext: TAuditContext)(implicit request: Request[AnyContent], authContext: AuthContext) = for {
-    destinationAfterRulesApplied <- ruleEngine.matchRulesForLocation(ruleContext, auditContext)
-    finalDestination <- throttlingService.throttle(destinationAfterRulesApplied, auditContext, ruleContext)
+    destinationAfterRulesApplied <- ruleEngine.matchRulesForLocation(ruleContext)
+    finalDestination <- throttlingService.throttle(destinationAfterRulesApplied.value, auditContext, ruleContext)
   } yield {
     sendAuditEvent(auditContext, finalDestination)
     metricsMonitoringService.sendMonitoringEvents(auditContext, finalDestination)

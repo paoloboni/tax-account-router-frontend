@@ -7,16 +7,22 @@ import scala.concurrent.Future
 
 package object engine {
 
-  case class AuditInfo(routingReasons: Map[RoutingReason, Boolean], ruleApplied: Option[String] = None)
+  case class AuditInfo(routingReasons: Map[RoutingReason, Boolean], ruleApplied: Option[String], throttlingInfo: Option[ThrottlingInfo])
   case class ThrottlingInfo(throttlingPercentage: Option[Int], throttled: Boolean, initialDestination: Location, throttlingEnabled: Boolean, stickyRoutingApplied: Boolean)
 
   object AuditInfo {
-    implicit val mergeAuditInfo: Semigroup[AuditInfo] = new Semigroup[AuditInfo] {
-      override def combine(x: AuditInfo, y: AuditInfo): AuditInfo = AuditInfo(x.routingReasons ++ y.routingReasons)
+
+    val Empty = AuditInfo(routingReasons = Map.empty, ruleApplied = None, throttlingInfo = None)
+
+    def apply(routingReasons: Map[RoutingReason, Boolean]): AuditInfo = AuditInfo(routingReasons = routingReasons, ruleApplied = None, throttlingInfo = None)
+
+    implicit val mergeAudit: Semigroup[AuditInfo] = new Semigroup[AuditInfo] {
+      override def combine(x: AuditInfo, y: AuditInfo): AuditInfo = x.copy(routingReasons = x.routingReasons ++ y.routingReasons)
     }
   }
 
   type ConditionResult = Future[Writer[AuditInfo, Boolean]]
   type RuleResult = Future[Writer[AuditInfo, Option[Location]]]
+  val emptyRuleResult: RuleResult = Future.successful(Writer(AuditInfo.Empty, None))
 
 }

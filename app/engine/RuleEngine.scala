@@ -16,12 +16,10 @@
 
 package engine
 
+import cats.data.Writer
 import model.{Location, _}
-import play.api.Logger
-import play.api.mvc.{AnyContent, Request}
-import uk.gov.hmrc.play.http.HeaderCarrier
-import uk.gov.hmrc.play.http.logging.MdcLoggingExecutionContext.fromLoggingDetails
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 trait RuleEngine {
@@ -30,22 +28,17 @@ trait RuleEngine {
 
   val defaultLocation: Location
 
-  def matchRulesForLocation(ruleContext: RuleContext): Future[Location] = {
-
-    rules.foldLeft(Future[Option[Location]](None)) {
-      (location, rule) => location.flatMap(candidateLocation => if (candidateLocation.isDefined) location
-      else {
-        val ruleApplyResult: Future[Option[Location]] = rule.apply(ruleContext, auditContext)
-        ruleApplyResult.map {
-          case Some(location) =>
-            auditContext.ruleApplied = rule.name
-            Logger.debug(s"rule applied: ${rule.name}")
-            Some(location)
-          case _ =>
-            Logger.debug(s"rule evaluated but not applied: ${rule.name}")
-            None
-        }
+  def matchRulesForLocation(ruleContext: RuleContext): Future[Writer[AuditInfo, Location]] = {
+    rules.foldLeft(emptyRuleResult) { (result, rule) =>
+      result.flatMap {
+        case r0 if r0.value.isDefined => Future.successful(r0)
+        case _ => rule.evaluate(ruleContext)
+      }
+    } map { result =>
+      result mapBoth ((auditInfo, location) => location match {
+        case Some(l) => (auditInfo, l)
+        case _ => (auditInfo.copy(ruleApplied = Some("bta-home-page-passed-through")), defaultLocation)
       })
-    }.map(nextLocation => nextLocation.getOrElse(defaultLocation))
+    }
   }
 }

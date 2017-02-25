@@ -84,5 +84,5 @@ object Conditions {
   val hasNino = Pure(hasNinoF, HAS_NINO)
   val hasIndividualAffinityGroup = Pure(hasIndividualAffinityGroupF, HAS_INDIVIDUAL_AFFINITY_GROUP)
   val hasAnyInactiveEnrolment = Pure(hasAnyInactiveEnrolmentF, HAS_ANY_INACTIVE_ENROLMENT)
-  val anyOtherRuleApplied = Pure(anyOtherRuleAppliedF, ???)
+//  val anyOtherRuleApplied = Pure(anyOtherRuleAppliedF, ???)
 }

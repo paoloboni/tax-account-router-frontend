@@ -24,9 +24,11 @@ import scala.concurrent.Future
 
 trait RuleEngine {
 
-  val rules: List[Rule[RuleContext]]
+  def rules: List[Rule[RuleContext]]
 
-  val defaultLocation: Location
+  def defaultLocation: Location
+
+  def defaultRuleName: String
 
   def matchRulesForLocation(ruleContext: RuleContext): Future[Writer[AuditInfo, Location]] = {
     rules.foldLeft(emptyRuleResult) { (result, rule) =>
@@ -37,7 +39,7 @@ trait RuleEngine {
     } map { result =>
       result mapBoth ((auditInfo, location) => location match {
         case Some(l) => (auditInfo, l)
-        case _ => (auditInfo.copy(ruleApplied = Some("bta-home-page-passed-through")), defaultLocation)
+        case _ => (auditInfo.copy(ruleApplied = Some(defaultRuleName)), defaultLocation)
       })
     }
   }

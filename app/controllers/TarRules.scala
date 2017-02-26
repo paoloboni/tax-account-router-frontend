@@ -29,6 +29,8 @@ object TarRules extends RuleEngine {
 
   override val defaultLocation = BusinessTaxAccount
 
+  override val defaultRuleName = "bta-home-page-passed-through"
+
   override val rules: List[Rule[RuleContext]] = List(
 
     rule("pta-home-page-for-verify-user") ~> (when(loggedInViaVerify) thenReturn PersonalTaxAccount),
@@ -50,7 +52,5 @@ object TarRules extends RuleEngine {
     rule("bta-home-page-affinity-group-unavailable") ~> (when(not(hasAnyInactiveEnrolment) and not(affinityGroupAvailable)) thenReturn BusinessTaxAccount),
 
     rule("pta-home-page-individual") ~> (when(not(hasAnyInactiveEnrolment) and hasIndividualAffinityGroup) thenReturn PersonalTaxAccount)
-
-//    when(anyOtherRuleApplied) thenReturn BusinessTaxAccount withName "bta-home-page-passed-through"
   )
 }

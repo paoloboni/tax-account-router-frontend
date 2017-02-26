@@ -23,32 +23,33 @@ import model.RuleContext
 
 object TarRules extends RuleEngine {
 
-  import engine.ConditionT._
-  import engine.RuleT._
-  import engine.WhenT._
+  import engine.Condition._
+  import engine.Rule._
+  import engine.When._
 
   override val defaultLocation = BusinessTaxAccount
 
   override val rules: List[Rule[RuleContext]] = List(
-    when(loggedInViaVerify) thenReturn PersonalTaxAccount withName "pta-home-page-for-verify-user",
 
-    when(isAGovernmentGatewayUser and not(ggEnrolmentsAvailable)) thenReturn BusinessTaxAccount withName "bta-home-page-gg-unavailable",
+    rule("pta-home-page-for-verify-user") ~> (when(loggedInViaVerify) thenReturn PersonalTaxAccount),
 
-    when(isAGovernmentGatewayUser and hasAnyBusinessEnrolment) thenReturn BusinessTaxAccount withName "bta-home-page-for-user-with-business-enrolments",
+    rule("bta-home-page-gg-unavailable") ~> (when(isAGovernmentGatewayUser and not(ggEnrolmentsAvailable)) thenReturn BusinessTaxAccount),
 
-    when(isAGovernmentGatewayUser and hasSaEnrolments and not(saReturnAvailable)) thenReturn BusinessTaxAccount withName "bta-home-page-sa-unavailable",
+    rule("bta-home-page-for-user-with-business-enrolments") ~> (when(isAGovernmentGatewayUser and hasAnyBusinessEnrolment) thenReturn BusinessTaxAccount),
 
-    when(isAGovernmentGatewayUser and hasSaEnrolments and not(hasPreviousReturns)) thenReturn BusinessTaxAccount withName "bta-home-page-for-user-with-no-previous-return",
+    rule("bta-home-page-sa-unavailable") ~> (when(isAGovernmentGatewayUser and hasSaEnrolments and not(saReturnAvailable)) thenReturn BusinessTaxAccount),
 
-    when(isAGovernmentGatewayUser and hasSaEnrolments and (isInAPartnership or isSelfEmployed)) thenReturn BusinessTaxAccount withName "bta-home-page-for-user-with-partnership-or-self-employment",
+    rule("bta-home-page-for-user-with-no-previous-return") ~> (when(isAGovernmentGatewayUser and hasSaEnrolments and not(hasPreviousReturns)) thenReturn BusinessTaxAccount),
 
-    when(isAGovernmentGatewayUser and hasSaEnrolments and not(isInAPartnership) and not(isSelfEmployed) and not(hasNino)) thenReturn BusinessTaxAccount withName "bta-home-page-for-user-with-no-partnership-and-no-self-employment-and-no-nino",
+    rule("bta-home-page-for-user-with-partnership-or-self-employment") ~> (when(isAGovernmentGatewayUser and hasSaEnrolments and (isInAPartnership or isSelfEmployed)) thenReturn BusinessTaxAccount),
 
-    when(isAGovernmentGatewayUser and hasSaEnrolments and not(isInAPartnership) and not(isSelfEmployed)) thenReturn PersonalTaxAccount withName "pta-home-page-for-user-with-no-partnership-and-no-self-employment",
+    rule("bta-home-page-for-user-with-no-partnership-and-no-self-employment-and-no-nino") ~> (when(isAGovernmentGatewayUser and hasSaEnrolments and not(isInAPartnership) and not(isSelfEmployed) and not(hasNino)) thenReturn BusinessTaxAccount),
 
-    when(not(hasAnyInactiveEnrolment) and not(affinityGroupAvailable)) thenReturn BusinessTaxAccount withName "bta-home-page-affinity-group-unavailable",
+    rule("pta-home-page-for-user-with-no-partnership-and-no-self-employment") ~> (when(isAGovernmentGatewayUser and hasSaEnrolments and not(isInAPartnership) and not(isSelfEmployed)) thenReturn PersonalTaxAccount),
 
-    when(not(hasAnyInactiveEnrolment) and hasIndividualAffinityGroup) thenReturn PersonalTaxAccount withName "pta-home-page-individual"
+    rule("bta-home-page-affinity-group-unavailable") ~> (when(not(hasAnyInactiveEnrolment) and not(affinityGroupAvailable)) thenReturn BusinessTaxAccount),
+
+    rule("pta-home-page-individual") ~> (when(not(hasAnyInactiveEnrolment) and hasIndividualAffinityGroup) thenReturn PersonalTaxAccount)
 
 //    when(anyOtherRuleApplied) thenReturn BusinessTaxAccount withName "bta-home-page-passed-through"
   )

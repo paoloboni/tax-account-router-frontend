@@ -69,7 +69,7 @@ sealed trait Condition[C] extends Expr[C, Boolean] {
   }
 }
 
-object ConditionT {
+object Condition {
   implicit class ConditionOps[C](condition: Condition[C]) {
     def and(other: Condition[C]) = And(condition, other)
     def or(other: Condition[C]) = Or(condition, other)
@@ -101,7 +101,7 @@ sealed trait Rule[C] extends Expr[C, Option[Location]] {
   }
 }
 
-object WhenT {
+object When {
   implicit class WhenOps[C](when: When[C]) {
     def thenReturn(location: Location): Rule[C] = when match {
       case When(condition) => BaseRule(condition, location)
@@ -109,15 +109,21 @@ object WhenT {
   }
 }
 
-object RuleT {
-  implicit class RuleOps[C](rule: Rule[C]) {
-    def withName(name: String): Rule[C] = rule match {
-      case BaseRule(condition, location) => RuleWithName(condition, location, name)
-      case r@RuleWithName(_, _, _) => r.copy(name = name)
-    }
-  }
+object Rule {
 
   def when[C](condition: Condition[C]) = When(condition)
+
+  trait RuleBuilder[C] {
+    def ~>(rule: Rule[C]): Rule[C] = this match {
+      case WithName(name) => rule match {
+        case BaseRule(condition, location) => RuleWithName(condition, location, name)
+        case r@RuleWithName(_, _, _) => r.copy(name = name)
+      }
+    }
+  }
+  case class WithName[C](name: String) extends RuleBuilder[C]
+
+  def rule[C](name: String): RuleBuilder[C] = WithName(name)
 }
 
 private case class BaseRule[C](condition: Condition[C], location: Location) extends Rule[C]

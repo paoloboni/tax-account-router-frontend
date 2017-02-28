@@ -66,7 +66,7 @@ trait RouterController extends FrontendController with Actions {
   def route(implicit authContext: AuthContext, request: Request[AnyContent]): Future[Result] = {
     val ruleContext = RuleContext(None)
     val auditContext = createAuditContext()
-    getFinalDestination(ruleContext, auditContext).map(location => Redirect(location.fullUrl))
+    getFinalDestination(ruleContext, auditContext).map(location => Redirect(location.url))
   }
 
   private def getFinalDestination(ruleContext: RuleContext, auditContext: TAuditContext)(implicit request: Request[AnyContent], authContext: AuthContext) = for {

@@ -75,7 +75,7 @@ trait AccountTypeController extends FrontendController with Actions {
     case Locations.PersonalTaxAccount => AccountType.Individual
     case Locations.BusinessTaxAccount => AccountType.Organisation
     case unknownLocation: Location =>
-      logger.warn(s"Location is ${unknownLocation.fullUrl} is not recognised as PTA or BTA. Returning default type.")
+      logger.warn(s"Location ${unknownLocation.url} is not recognised as PTA or BTA. Returning default type.")
       defaultAccountType
   }
 

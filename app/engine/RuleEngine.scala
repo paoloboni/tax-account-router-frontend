@@ -30,7 +30,7 @@ trait RuleEngine {
 
   def defaultRuleName: String
 
-  def matchRulesForLocation(ruleContext: RuleContext): Future[Writer[AuditInfo, Location]] = {
+  def getLocation(ruleContext: RuleContext): Future[Writer[AuditInfo, Location]] = {
     rules.foldLeft(emptyRuleResult) { (result, rule) =>
       result.flatMap {
         case r0 if r0.value.isDefined => Future.successful(r0)

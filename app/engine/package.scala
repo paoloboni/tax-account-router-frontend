@@ -23,6 +23,7 @@ package object engine {
 
   type ConditionResult = Future[Writer[AuditInfo, Boolean]]
   type RuleResult = Future[Writer[AuditInfo, Option[Location]]]
+  type EngineResult = Future[Writer[AuditInfo, Location]]
   val emptyRuleResult: RuleResult = Future.successful(Writer(AuditInfo.Empty, None))
 
 }

@@ -66,24 +66,25 @@ trait RouterController extends FrontendController with Actions {
   def route(implicit authContext: AuthContext, request: Request[AnyContent]): Future[Result] = {
     val ruleContext = RuleContext(None)
     val auditContext = createAuditContext()
-    getFinalDestination(ruleContext, auditContext).map(location => Redirect(location.url))
-  }
 
-  private def getFinalDestination(ruleContext: RuleContext, auditContext: TAuditContext)(implicit request: Request[AnyContent], authContext: AuthContext) = for {
-    destinationAfterRulesApplied <- ruleEngine.matchRulesForLocation(ruleContext)
-    finalDestination <- throttlingService.throttle(destinationAfterRulesApplied.value, auditContext, ruleContext)
-  } yield {
-    sendAuditEvent(auditContext, finalDestination)
-    metricsMonitoringService.sendMonitoringEvents(auditContext, finalDestination)
-    Logger.debug(s"routing to: ${finalDestination.name}")
-    analyticsEventSender.sendEvents(finalDestination.name, auditContext)
-    finalDestination
-  }
-
-  private def sendAuditEvent(auditContext: TAuditContext, throttledLocation: Location)(implicit authContext: AuthContext, request: Request[AnyContent], hc: HeaderCarrier) = {
-    auditContext.toAuditEvent(throttledLocation).foreach { auditEvent =>
-      auditConnector.sendEvent(auditEvent)
-      Logger.debug(s"Routing decision summary: ${auditEvent.detail \ "reasons"}")
+    def sendAuditEvent(auditContext: TAuditContext, throttledLocation: Location)(implicit authContext: AuthContext, request: Request[AnyContent], hc: HeaderCarrier) = {
+      auditContext.toAuditEvent(throttledLocation).foreach { auditEvent =>
+        auditConnector.sendEvent(auditEvent)
+        Logger.debug(s"Routing decision summary: ${auditEvent.detail \ "reasons"}")
+      }
     }
+
+    val destination = for {
+      destinationAfterRulesApplied <- ruleEngine.getLocation(ruleContext)
+      finalDestination <- throttlingService.throttle(destinationAfterRulesApplied.value, auditContext, ruleContext)
+    } yield {
+      sendAuditEvent(auditContext, finalDestination)
+      metricsMonitoringService.sendMonitoringEvents(auditContext, finalDestination)
+      Logger.debug(s"routing to: ${finalDestination.name}")
+      analyticsEventSender.sendEvents(finalDestination.name, auditContext)
+      finalDestination
+    }
+
+    destination.map(location => Redirect(location.url))
   }
 }

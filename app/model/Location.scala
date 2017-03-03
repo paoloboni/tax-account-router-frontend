@@ -62,5 +62,5 @@ object Locations {
 
   val all = List(PersonalTaxAccount, BusinessTaxAccount, TaxAccountRouterHome)
 
-  def find(name: String) = all.find { case Location(n, _) => n == name }
+  def find(name: String): Option[Location] = all.find { case Location(n, _) => n == name }
 }

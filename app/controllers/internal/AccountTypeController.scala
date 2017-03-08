@@ -19,7 +19,7 @@ package controllers.internal
 import connector.FrontendAuthConnector
 import controllers.TarRules
 import controllers.internal.AccountType.AccountType
-import engine.RuleEngine
+import engine._
 import model._
 import play.api.libs.json.{Json, Reads, Writes}
 import play.api.mvc.Action
@@ -65,8 +65,8 @@ trait AccountTypeController extends FrontendController with Actions {
 
   def accountTypeForCredId(credId: String) = Action.async { implicit request =>
     val ruleContext = RuleContext(Some(credId))
-    ruleEngine.getLocation(ruleContext) map { location =>
-      val accountType = accountTypeBasedOnLocation(location.value)
+    ruleEngine.getLocation(ruleContext).value map { location =>
+      val accountType = accountTypeBasedOnLocation(location)
       Ok(Json.toJson(AccountTypeResponse(accountType)))
     }
   }

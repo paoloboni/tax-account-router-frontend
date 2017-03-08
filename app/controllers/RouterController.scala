@@ -28,6 +28,7 @@ import uk.gov.hmrc.play.audit.http.connector.AuditConnector
 import uk.gov.hmrc.play.frontend.auth._
 import uk.gov.hmrc.play.frontend.controller.FrontendController
 import uk.gov.hmrc.play.http.HeaderCarrier
+import engine._
 
 import scala.concurrent.Future
 
@@ -75,8 +76,8 @@ trait RouterController extends FrontendController with Actions {
     }
 
     val destination = for {
-      destinationAfterRulesApplied <- ruleEngine.getLocation(ruleContext)
-      finalDestination <- throttlingService.throttle(destinationAfterRulesApplied.value, auditContext, ruleContext)
+      destinationAfterRulesApplied <- ruleEngine.getLocation(ruleContext).value
+      finalDestination <- throttlingService.throttle(destinationAfterRulesApplied, auditContext, ruleContext)
     } yield {
       sendAuditEvent(auditContext, finalDestination)
       metricsMonitoringService.sendMonitoringEvents(auditContext, finalDestination)

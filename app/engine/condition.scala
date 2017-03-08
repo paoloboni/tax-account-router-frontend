@@ -16,15 +16,15 @@
 
 package engine
 
-import cats.data.Writer
+import cats.data.WriterT
 import model.Location
 import model.RoutingReason.RoutingReason
-import scala.concurrent.ExecutionContext.Implicits.global
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 sealed trait Expr[Context, Result] {
-  def evaluate(context: Context): Future[Writer[AuditInfo, Result]]
+  def evaluate(context: Context): WriterT[Future,AuditInfo, Result]
 }
 
 case class Pure[C](f: C => Future[Boolean], routingReason: RoutingReason) extends Condition[C] with Reason
@@ -38,34 +38,27 @@ sealed trait Condition[C] extends Expr[C, Boolean] {
   def evaluate(context: C): ConditionResult = this match {
 
     case Pure(f, auditType) =>
-      for {
-       r <- f(context)
-      } yield Writer(AuditInfo(Map(auditType -> r)), r)
+      WriterT {
+        f(context)
+          .map(r => (AuditInfo(Map(auditType -> r)), r))
+      }
 
     case And(c1, c2) =>
       for {
         a <- c1.evaluate(context)
         b <- c2.evaluate(context)
-      } yield for {
-        a1 <- a
-        b1 <- b
-      } yield a1 && b1
+      } yield a && b
 
     case Or(c1, c2) =>
       for {
         a <- c1.evaluate(context)
         b <- c2.evaluate(context)
-      } yield for {
-        a1 <- a
-        b1 <- b
-      } yield a1 || b1
+      } yield a || b
 
     case Not(condition) =>
       for {
         c <- condition.evaluate(context)
-      } yield for {
-        c1 <- c
-      } yield !c1
+      } yield !c
   }
 }
 
@@ -86,12 +79,12 @@ sealed trait Rule[C] extends Expr[C, Option[Location]] {
 
   def evaluate(context: C): RuleResult = {
 
-    def go(condition: Condition[C], location: Location, name: Option[String] = None): RuleResult = for {
-      c <- condition.evaluate(context)
-    } yield c.mapBoth { case (auditInfo, result) =>
-      val l = Option(result).collect { case true => location }
-      val info = name.fold(auditInfo)(n => auditInfo.copy(ruleApplied = Some(n)))
-      (info, l)
+    def go(condition: Condition[C], location: Location, name: Option[String] = None): RuleResult = {
+      condition.evaluate(context).mapBoth { case (auditInfo, result) =>
+        val l = Option(result).collect { case true => location }
+        val info = name.fold(auditInfo)(n => auditInfo.copy(ruleApplied = Some(n)))
+        (info, l)
+      }
     }
 
     this match {

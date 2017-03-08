@@ -1,9 +1,9 @@
-import cats.Semigroup
-import cats.data.Writer
+import cats.data.WriterT
+import cats.{FlatMap, Functor, Semigroup}
 import model.Location
 import model.RoutingReason.RoutingReason
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 package object engine {
 
@@ -21,9 +21,23 @@ package object engine {
     }
   }
 
-  type ConditionResult = Future[Writer[AuditInfo, Boolean]]
-  type RuleResult = Future[Writer[AuditInfo, Option[Location]]]
-  type EngineResult = Future[Writer[AuditInfo, Location]]
-  val emptyRuleResult: RuleResult = Future.successful(Writer(AuditInfo.Empty, None))
+  implicit def futureFunctor(implicit ec: ExecutionContext): Functor[Future] = new Functor[Future] {
+    override def map[A, B](fa: Future[A])(f: (A) => B): Future[B] = fa.map(f)
+  }
+
+  implicit def futureFlatMap(implicit ec: ExecutionContext): FlatMap[Future] = new FlatMap[Future] {
+    override def flatMap[A, B](fa: Future[A])(f: (A) => Future[B]): Future[B] = fa flatMap f
+
+    override def tailRecM[A, B](a: A)(f: (A) => Future[Either[A, B]]): Future[B] = f(a).map {
+      case Right(v) => v
+    }
+
+    override def map[A, B](fa: Future[A])(f: (A) => B): Future[B] = fa map f
+  }
+
+  type ConditionResult = WriterT[Future, AuditInfo, Boolean]
+  type RuleResult = WriterT[Future, AuditInfo, Option[Location]]
+  type EngineResult = WriterT[Future, AuditInfo, Location]
+  val emptyRuleResult: RuleResult = WriterT(Future.successful(AuditInfo.Empty, None))
 
 }

@@ -16,7 +16,7 @@
 
 package engine
 
-import cats.data.Writer
+import cats.data.WriterT
 import model.{Location, _}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -30,17 +30,17 @@ trait RuleEngine {
 
   def defaultRuleName: String
 
-  def getLocation(ruleContext: RuleContext): Future[Writer[AuditInfo, Location]] = {
+  def getLocation(ruleContext: RuleContext): WriterT[Future, AuditInfo, Location] = {
     rules.foldLeft(emptyRuleResult) { (result, rule) =>
       result.flatMap {
-        case r0 if r0.value.isDefined => Future.successful(r0)
+        case r0@Some(_) => WriterT(result.written.map(l => (l, r0)))
         case _ => rule.evaluate(ruleContext)
       }
-    } map { result =>
-      result mapBoth ((auditInfo, location) => location match {
+    } mapBoth { (auditInfo, location) =>
+      location match {
         case Some(l) => (auditInfo, l)
         case _ => (auditInfo.copy(ruleApplied = Some(defaultRuleName)), defaultLocation)
-      })
+      }
     }
   }
 }

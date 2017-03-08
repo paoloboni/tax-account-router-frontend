@@ -1,5 +1,7 @@
 package services
 
+import cats.data.WriterT
+import connector.InternalUserIdentifier
 import engine.{AuditInfo, EngineResult, ThrottlingInfo}
 import model.Locations.{BusinessTaxAccount, PersonalTaxAccount}
 import model.{Location, Locations, RuleContext}
@@ -8,8 +10,9 @@ import play.api.mvc.{AnyContent, Request}
 import play.api.{Configuration, Play}
 import repositories.RoutingCacheRepository
 import play.api.Play.current
-import scala.concurrent.ExecutionContext.Implicits.global
 
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 import scala.util.Random
 
 trait Throttling {
@@ -71,40 +74,38 @@ trait Throttling {
       fallback.getOrElse(location)
     }
 
-    for {
-      result <- currentResult
-      userIdentifier <- ruleContext.internalUserIdentifier
-    } yield {
-      userIdentifier match {
-        case None => result
-        case Some(userId) =>
-          result mapBoth {
-            case (auditInfo, location) if throttlingEnabled =>
-
-              val throttle: (Configuration) => (AuditInfo, Location) =
-                for {
-                  percentage <- throttlePercentage
-                  throttleDestination <- findFallbackFor(location)
-                  hourOfDay = DateTime.now().getHourOfDay
-                  hourlyLimit <- hourlyLimit(hourOfDay)
-                  randomNumber = random.nextInt(100) + 1
-                } yield {
-                  val throttlingInfo = ThrottlingInfo(throttlingPercentage = Some(percentage), location != throttleDestination, location, throttlingEnabled, stickyRoutingApplied = false)
-                  if (randomNumber <= percentage) {
-                    (auditInfo.copy(throttlingInfo = Some(throttlingInfo)), throttleDestination)
-                  } else {
-                    hourlyLimitService.applyHourlyLimit(location, throttleDestination, userId, hourlyLimit, hourOfDay)
-                    (auditInfo.copy(throttlingInfo = Some(throttlingInfo)), throttleDestination)
-                  }
-
-                }
-              throttle(configurationForLocation(location, ruleContext.request_))
-
-            case (auditInfo, location) =>
-              val throttlingInfo = ThrottlingInfo(throttlingPercentage = None, throttled = false, location, throttlingEnabled, stickyRoutingApplied = false)
-              (auditInfo.copy(throttlingInfo = Some(throttlingInfo)), location)
-          }
+    def throttle(auditInfo: AuditInfo, location: Location, userId: InternalUserIdentifier): (Configuration) => (AuditInfo, Location) =
+      for {
+        percentage <- throttlePercentage
+        throttleDestination <- findFallbackFor(location)
+        hourOfDay = DateTime.now().getHourOfDay
+        hourlyLimit <- hourlyLimit(hourOfDay)
+        randomNumber = random.nextInt(100) + 1
+      } yield {
+        val throttlingInfo = ThrottlingInfo(throttlingPercentage = Some(percentage), location != throttleDestination, location, throttlingEnabled, stickyRoutingApplied = false)
+        if (randomNumber <= percentage) {
+          (auditInfo.copy(throttlingInfo = Some(throttlingInfo)), throttleDestination)
+        } else {
+          hourlyLimitService.applyHourlyLimit(location, throttleDestination, userId, hourlyLimit, hourOfDay)
+          (auditInfo.copy(throttlingInfo = Some(throttlingInfo)), throttleDestination)
+        }
       }
+
+    currentResult flatMap { location =>
+
+      val result: Future[(AuditInfo, Location)] = for {
+        userIdentifier <- ruleContext.internalUserIdentifier
+        auditInfo <- currentResult.written
+      } yield userIdentifier match {
+        case None => (auditInfo, location)
+        case Some(userId) if throttlingEnabled =>
+          throttle(auditInfo, location, userId)(configurationForLocation(location, ruleContext.request_))
+        case Some(_) =>
+          val throttlingInfo = ThrottlingInfo(throttlingPercentage = None, throttled = false, location, throttlingEnabled, stickyRoutingApplied = false)
+          (auditInfo.copy(throttlingInfo = Some(throttlingInfo)), location)
+      }
+
+      WriterT(result)
     }
   }
 }

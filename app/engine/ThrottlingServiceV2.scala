@@ -1,19 +1,21 @@
-package services
+package engine
 
 import cats.data.WriterT
 import connector.InternalUserIdentifier
-import engine.{AuditInfo, EngineResult, ThrottlingInfo}
 import model.Locations.{BusinessTaxAccount, PersonalTaxAccount}
-import model.{Location, Locations, RuleContext}
+import model._
 import org.joda.time.DateTime
-import play.api.mvc.{AnyContent, Request}
-import play.api.{Configuration, Play}
-import repositories.RoutingCacheRepository
 import play.api.Play.current
+import play.api.libs.json.{JsError, JsSuccess, Json}
+import play.api.mvc.{AnyContent, Request}
+import play.api.{Configuration, Logger, Play}
+import repositories.RoutingCacheRepository
+import services.{Duration, HourlyLimitService, Instant}
+import uk.gov.hmrc.cache.model.Id
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.util.Random
+import scala.util.{Random, Success}
 
 trait Throttling {
 
@@ -36,6 +38,71 @@ trait Throttling {
     (BusinessTaxAccount, BusinessTaxAccount) -> shortLiveCacheDuration.map(t => Duration(t)),
     (PersonalTaxAccount, BusinessTaxAccount) -> shortLiveCacheDuration.map(t => Duration(t))
   )
+
+  def doThrottle(currentResult: EngineResult, ruleContext: RuleContext): EngineResult = {
+
+    def createOrUpdateRoutingCache(location: Location, throttledLocation: Location, userIdentifier: String) = {
+      documentExpirationTime.get((location, throttledLocation)).flatten.map { documentExpirationTime =>
+        val expirationTime: DateTime = documentExpirationTime.getExpirationTime
+        routingCacheRepository.createOrUpdate(userIdentifier, "routingInfo", Json.toJson(RoutingInfo(location.name, throttledLocation.name, expirationTime)))
+        throttledLocation
+      }
+    }
+
+    import AuditInfo._
+
+    def location(userIdentifier: InternalUserIdentifier): EngineResult = {
+      if (stickyRoutingEnabled) {
+
+        currentResult.flatMap { initialLocation =>
+
+          WriterT {
+            for {
+              cacheResult <- routingCacheRepository.findById(Id(userIdentifier))
+              auditInfo <- currentResult.written
+              result <- cacheResult match {
+                case Some(cache) =>
+                  cache.data.map { data =>
+                    val jsResult = Json.fromJson[RoutingInfo](data)
+                    jsResult match {
+                      case JsSuccess(routingInfo, _) =>
+                        val stickyRoutingApplied = Locations.find(routingInfo.routedDestination).contains(initialLocation) && routingInfo.expirationTime.isAfterNow
+                        val throttledLocation = stickyRoutingApplied match {
+                          case true =>
+                            val finalLocation = Locations.find(routingInfo.throttledDestination).get
+                            val auditInfoWithThrottlingInfo = auditInfo.copy(throttlingInfo = Some(ThrottlingInfo(throttlingPercentage = None, initialLocation != finalLocation, initialLocation, throttlingEnabled, stickyRoutingApplied)))
+                            Future.successful(auditInfoWithThrottlingInfo, finalLocation)
+                          case false =>
+                            throttle(currentResult, ruleContext).run
+                        }
+
+                        throttledLocation andThen {
+                          case Success((_, tLocation)) => createOrUpdateRoutingCache(initialLocation, tLocation, userIdentifier)
+                        }
+                        throttledLocation
+                      case JsError(e) =>
+                        Logger.error(s"Error reading document $e")
+                        currentResult.run
+                    }
+                  }.getOrElse(throttle(currentResult, ruleContext).run)
+              }
+            } yield result
+          }
+        }
+      } else {
+        throttle(currentResult, ruleContext)
+      }
+    }
+
+    WriterT {
+      ruleContext.internalUserIdentifier map {
+        case Some(identifier) =>
+          location(identifier)
+        case _ =>
+          currentResult
+      } flatMap (_ run)
+    }
+  }
 
   def throttle(currentResult: EngineResult, ruleContext: RuleContext): EngineResult = {
 
@@ -81,8 +148,8 @@ trait Throttling {
         hourOfDay = DateTime.now().getHourOfDay
         hourlyLimit <- hourlyLimit(hourOfDay)
         randomNumber = random.nextInt(100) + 1
+        throttlingInfo = ThrottlingInfo(throttlingPercentage = Some(percentage), location != throttleDestination, location, throttlingEnabled, stickyRoutingApplied = false)
       } yield {
-        val throttlingInfo = ThrottlingInfo(throttlingPercentage = Some(percentage), location != throttleDestination, location, throttlingEnabled, stickyRoutingApplied = false)
         if (randomNumber <= percentage) {
           (auditInfo.copy(throttlingInfo = Some(throttlingInfo)), throttleDestination)
         } else {

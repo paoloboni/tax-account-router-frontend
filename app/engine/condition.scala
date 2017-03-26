@@ -17,14 +17,15 @@
 package engine
 
 import cats.data.WriterT
+import cats.kernel.Semigroup
+import engine.RoutingReason.RoutingReason
 import model.Location
-import model.RoutingReason.RoutingReason
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 sealed trait Expr[Context, Result] {
-  def evaluate(context: Context): WriterT[Future,AuditInfo, Result]
+  def evaluate[A <: AuditInfo: Semigroup](context: Context): WriterT[Future, AuditInfo, Result]
 }
 
 case class Pure[C](f: C => Future[Boolean], routingReason: RoutingReason) extends Condition[C] with Reason
@@ -35,30 +36,45 @@ case class When[C](condition: Condition[C])
 
 sealed trait Condition[C] extends Expr[C, Boolean] {
 
-  def evaluate(context: C): ConditionResult = this match {
+  def evaluate[A <: AuditInfo: Semigroup](context: C): ConditionResult = {
 
-    case Pure(f, auditType) =>
-      WriterT {
-        f(context)
-          .map(r => (AuditInfo(Map(auditType -> r)), r))
+    val auditInfoSemigroup = implicitly[Semigroup[AuditInfo]]
+
+    this match {
+
+      case Pure(f, auditType) =>
+        WriterT {
+          f(context)
+            .map(isTrue => (AuditInfo(Map(auditType -> Some(isTrue))), isTrue))
+        }
+
+      case And(c1, c2) => WriterT {
+        c1.evaluate(context).run.flatMap { case (info1, result1) =>
+          if (result1) {
+            c2.evaluate(context).run.map { case (info2, result2) =>
+              (auditInfoSemigroup.combine(info1, info2), result1 && result2)
+            }
+          }
+          else Future.successful(info1, result1)
+        }
       }
 
-    case And(c1, c2) =>
-      for {
-        a <- c1.evaluate(context)
-        b <- c2.evaluate(context)
-      } yield a && b
+      case Or(c1, c2) => WriterT {
+        c1.evaluate(context).run.flatMap { case (info1, result1) =>
+          if (!result1) {
+            c2.evaluate(context).run.map { case (info2, result2) =>
+              (auditInfoSemigroup.combine(info1, info2), result1 || result2)
+            }
+          }
+          else Future.successful(info1, result1)
+        }
+      }
 
-    case Or(c1, c2) =>
-      for {
-        a <- c1.evaluate(context)
-        b <- c2.evaluate(context)
-      } yield a || b
-
-    case Not(condition) =>
-      for {
-        c <- condition.evaluate(context)
-      } yield !c
+      case Not(condition) =>
+        for {
+          c <- condition.evaluate(context)
+        } yield !c
+    }
   }
 }
 
@@ -77,13 +93,18 @@ sealed trait Reason { self: Condition[_] =>
 
 sealed trait Rule[C] extends Expr[C, Option[Location]] {
 
-  def evaluate(context: C): RuleResult = {
+  def evaluate[A <: AuditInfo: Semigroup](context: C): RuleResult = {
 
-    def go(condition: Condition[C], location: Location, name: Option[String] = None): RuleResult = {
+    def go(condition: Condition[C], location: Location, maybeName: Option[String] = None): RuleResult = {
       condition.evaluate(context).mapBoth { case (auditInfo, result) =>
-        val l = Option(result).collect { case true => location }
-        val info = name.fold(auditInfo)(n => auditInfo.copy(ruleApplied = Some(n)))
-        (info, l)
+        val maybeLocation: Option[Location] = Option(result).collect { case true => location }
+
+        val info = (for {
+          name <- maybeName
+          _ <- maybeLocation
+        } yield auditInfo.copy(ruleApplied = Some(name))) getOrElse auditInfo
+
+        (info, maybeLocation)
       }
     }
 
@@ -106,17 +127,12 @@ object Rule {
 
   def when[C](condition: Condition[C]) = When(condition)
 
-  trait RuleBuilder[C] {
-    def ~>(rule: Rule[C]): Rule[C] = this match {
-      case WithName(name) => rule match {
-        case BaseRule(condition, location) => RuleWithName(condition, location, name)
-        case r@RuleWithName(_, _, _) => r.copy(name = name)
-      }
+  implicit class RuleOps[C](rule: Rule[C]) {
+    def withName(name: String): Rule[C] = rule match {
+      case BaseRule(condition, location) => RuleWithName(condition, location, name)
+      case r@RuleWithName(_, _, _) => r.copy(name = name)
     }
   }
-  case class WithName[C](name: String) extends RuleBuilder[C]
-
-  def rule[C](name: String): RuleBuilder[C] = WithName(name)
 }
 
 private case class BaseRule[C](condition: Condition[C], location: Location) extends Rule[C]

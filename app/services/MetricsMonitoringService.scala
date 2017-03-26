@@ -46,10 +46,10 @@ trait MetricsMonitoringService {
 
       metricsRegistry.meter(s"routed.to-${throttledLocation.name}.because-${auditInfo.ruleApplied}$throttleKey").mark()
 
-      val trueConditions = auditInfo.routingReasons.filter { case (_, v) => v }.keys
+      val trueConditions = auditInfo.routingReasons.filter { case (_, Some(v)) => v }.keys
       trueConditions.foreach(reason => metricsRegistry.meter(reason.key).mark())
 
-      val falseConditions = auditInfo.routingReasons.filter { case (_, v) => !v }.keys
+      val falseConditions = auditInfo.routingReasons.filter { case (_, Some(v)) => !v }.keys
       falseConditions.foreach(reason => metricsRegistry.meter(s"not-${reason.key}").mark())
     }
   }

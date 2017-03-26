@@ -121,7 +121,7 @@ package object engine {
 
   object AuditInfo {
 
-    private val emptyReasons: Map[RoutingReason.Reason, Option[Boolean]] = allReasons.map(reason => reason -> None).toMap
+    val emptyReasons: Map[RoutingReason.Reason, Option[Boolean]] = allReasons.map(reason => reason -> None).toMap
 
     val Empty = AuditInfo(routingReasons = emptyReasons, ruleApplied = None, throttlingInfo = None)
 

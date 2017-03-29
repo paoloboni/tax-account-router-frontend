@@ -101,6 +101,7 @@ trait Throttling {
                         currentResult.run
                     }
                   }.getOrElse(throttle(currentResult, ruleContext).run)
+                case _ => throttle(currentResult, ruleContext).run
               }
             } yield result
           }
